@@ -335,10 +335,14 @@ namespace interpreter
 		CallInd_void,
 		CallInd_ret,
 		CallInd_ret_expand,
-		CallDelegate_void,
-		CallDelegate_ret,
-		CallDelegate_ret_expand,
+		CallDelegateInvoke_void,
+		CallDelegateInvoke_ret,
+		CallDelegateInvoke_ret_expand,
+		CallDelegateBeginInvoke,
+		CallDelegateEndInvoke_void,
+		CallDelegateEndInvoke_ret,
 		NewDelegate,
+		CtorDelegate,
 		CallCommonNativeInstance_v_0,
 		CallCommonNativeInstance_i1_0,
 		CallCommonNativeInstance_u1_0,
@@ -826,9 +830,19 @@ namespace interpreter
 		NewVector4_2,
 		NewVector4_3,
 		NewVector4_4,
+		CtorVector2,
+		CtorVector3_2,
+		CtorVector3_3,
+		CtorVector4_2,
+		CtorVector4_3,
+		CtorVector4_4,
 		ArrayGetGenericValueImpl,
 		ArraySetGenericValueImpl,
 		NewString,
+		NewString_2,
+		NewString_3,
+		UnsafeEnumCast,
+		AssemblyGetExecutingAssembly,
 
 		//!!!}}OPCODE
 	};
@@ -3831,7 +3845,7 @@ namespace interpreter
 	};
 
 
-	struct IRCallDelegate_void : IRCommon
+	struct IRCallDelegateInvoke_void : IRCommon
 	{
 		uint16_t invokeParamCount;
 		uint32_t managed2NativeStaticMethod;
@@ -3840,12 +3854,11 @@ namespace interpreter
 	};
 
 
-	struct IRCallDelegate_ret : IRCommon
+	struct IRCallDelegateInvoke_ret : IRCommon
 	{
 		uint16_t ret;
 		uint16_t invokeParamCount;
-		uint8_t __pad6;
-		uint8_t __pad7;
+		uint16_t retTypeStackObjectSize;
 		uint32_t managed2NativeStaticMethod;
 		uint32_t managed2NativeInstanceMethod;
 		uint32_t argIdxs;
@@ -3856,7 +3869,7 @@ namespace interpreter
 	};
 
 
-	struct IRCallDelegate_ret_expand : IRCommon
+	struct IRCallDelegateInvoke_ret_expand : IRCommon
 	{
 		uint8_t retLocationType;
 		uint8_t __pad3;
@@ -3872,12 +3885,58 @@ namespace interpreter
 	};
 
 
+	struct IRCallDelegateBeginInvoke : IRCommon
+	{
+		uint16_t result;
+		uint32_t methodInfo;
+		uint32_t argIdxs;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
+	struct IRCallDelegateEndInvoke_void : IRCommon
+	{
+		uint16_t asyncResult;
+		uint32_t methodInfo;
+	};
+
+
+	struct IRCallDelegateEndInvoke_ret : IRCommon
+	{
+		uint16_t asyncResult;
+		uint16_t ret;
+		uint8_t __pad6;
+		uint8_t __pad7;
+		uint32_t methodInfo;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
 	struct IRNewDelegate : IRCommon
 	{
 		uint16_t dst;
 		uint16_t obj;
 		uint16_t method;
 		uint32_t klass;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
+	struct IRCtorDelegate : IRCommon
+	{
+		uint16_t dst;
+		uint16_t obj;
+		uint16_t method;
+		uint32_t ctor;
 		uint8_t __pad12;
 		uint8_t __pad13;
 		uint8_t __pad14;
@@ -9364,6 +9423,74 @@ namespace interpreter
 	};
 
 
+	struct IRCtorVector2 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+	};
+
+
+	struct IRCtorVector3_2 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+	};
+
+
+	struct IRCtorVector3_3 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+		uint16_t z;
+		uint8_t __pad10;
+		uint8_t __pad11;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
+	struct IRCtorVector4_2 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+	};
+
+
+	struct IRCtorVector4_3 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+		uint16_t z;
+		uint8_t __pad10;
+		uint8_t __pad11;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
+	struct IRCtorVector4_4 : IRCommon
+	{
+		uint16_t obj;
+		uint16_t x;
+		uint16_t y;
+		uint16_t z;
+		uint16_t w;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
 	struct IRArrayGetGenericValueImpl : IRCommon
 	{
 		uint16_t arr;
@@ -9384,6 +9511,47 @@ namespace interpreter
 	{
 		uint16_t str;
 		uint16_t chars;
+		uint8_t __pad6;
+		uint8_t __pad7;
+	};
+
+
+	struct IRNewString_2 : IRCommon
+	{
+		uint16_t str;
+		uint16_t chars;
+		uint16_t startIndex;
+		uint16_t length;
+		uint8_t __pad10;
+		uint8_t __pad11;
+		uint8_t __pad12;
+		uint8_t __pad13;
+		uint8_t __pad14;
+		uint8_t __pad15;
+	};
+
+
+	struct IRNewString_3 : IRCommon
+	{
+		uint16_t str;
+		uint16_t c;
+		uint16_t count;
+	};
+
+
+	struct IRUnsafeEnumCast : IRCommon
+	{
+		uint16_t dst;
+		uint16_t src;
+		uint16_t srcType;
+	};
+
+
+	struct IRAssemblyGetExecutingAssembly : IRCommon
+	{
+		uint16_t ret;
+		uint8_t __pad4;
+		uint8_t __pad5;
 		uint8_t __pad6;
 		uint8_t __pad7;
 	};

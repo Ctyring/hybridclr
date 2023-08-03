@@ -8,7 +8,7 @@ namespace hybridclr
 {
 namespace interpreter
 {
-	ArgDesc GetValueTypeArgDescBySize(uint32_t size)
+	TypeDesc GetValueTypeArgDescBySize(uint32_t size)
 	{
 #if HYBRIDCLR_ABI_ARM_64
 		if (size <= 8)
@@ -23,7 +23,7 @@ namespace interpreter
 		{
 			return { LocationDataType::SR, (uint32_t)metadata::GetStackSizeByByteSize(size) };
 		}
-#elif HYBRIDCLR_ABI_UNIVERSAL_64 || HYBRIDCLR_ABI_UNIVERSAL_32
+#elif HYBRIDCLR_ABI_UNIVERSAL_64 || HYBRIDCLR_ABI_UNIVERSAL_32 || HYBRIDCLR_ABI_WEBGL32
 		if (size <= 8)
 		{
 			return { LocationDataType::U8, 1 };
@@ -49,7 +49,7 @@ namespace interpreter
 #endif
 	}
 
-	ArgDesc GetTypeArgDesc(const Il2CppType* type)
+	TypeDesc GetTypeArgDesc(const Il2CppType* type)
 	{
 		if (type->byref)
 		{
@@ -121,6 +121,19 @@ namespace interpreter
 			return{ LocationDataType::U8, 1 };
 		}
 		}
+	}
+
+	bool IsPassByValWhenInvoke(const Il2CppType* type, bool passByValWhenCall)
+	{
+		if (type->byref)
+		{
+			return false;
+		}
+		if (hybridclr::metadata::IsValueType(type))
+		{
+			return passByValWhenCall;
+		}
+		return false;
 	}
 
 	Il2CppObject* TranslateNativeValueToBoxValue(const Il2CppType* type, void* value)

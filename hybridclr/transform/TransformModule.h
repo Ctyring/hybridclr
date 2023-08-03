@@ -1,16 +1,13 @@
 #pragma once
 
-#include "CommonDef.h"
-#include "HybridCLRConfig.h"
-
 namespace hybridclr
 {
-
-
-
-	class ModuleManager
+namespace transform
+{
+	class TransformModule
 	{
 	public:
 		static void Initialize();
 	};
+}
 }

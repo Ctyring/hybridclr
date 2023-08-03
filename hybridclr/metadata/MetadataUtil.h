@@ -4,6 +4,8 @@
 #include "vm/GlobalMetadata.h"
 #include "vm/Exception.h"
 #include "utils/HashUtils.h"
+#include "metadata/Il2CppTypeHash.h"
+#include "metadata/Il2CppTypeCompare.h"
 
 #include "../CommonDef.h"
 #include "MetadataDef.h"
@@ -133,6 +135,16 @@ namespace metadata
         return IsInterpreterIndex(image->token);
     }
 
+    inline bool IsPrologHasThis(uint32_t flags)
+    {
+        return flags & 0x20;
+    }
+
+    inline bool IsPrologExplicitThis(uint32_t flags)
+    {
+        return flags & 0x40;
+    }
+
 #pragma endregion
 
 
@@ -178,6 +190,11 @@ namespace metadata
         return (flags & METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK) == METHOD_ATTRIBUTE_PRIVATE;
     }
 
+    inline bool IsPublicMethod(uint32_t flags)
+    {
+        return (flags & METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK) == METHOD_ATTRIBUTE_PUBLIC;
+    }
+
     inline bool IsGenericIns(const Il2CppType* type)
     {
         return type->type == IL2CPP_TYPE_GENERICINST;
@@ -204,6 +221,11 @@ namespace metadata
     }
 
     bool IsValueType(const Il2CppType* type);
+
+    inline bool IsValueType(const Il2CppTypeDefinition* typeDef)
+    {
+        return typeDef->bitfield & (1 << (il2cpp::vm::kBitIsValueType - 1));
+    }
 
     inline const Il2CppTypeDefinition* GetUnderlyingTypeDefinition(const Il2CppType* type)
     {
@@ -243,6 +265,26 @@ namespace metadata
         return !method->genericMethod || method->is_generic ? method : method->genericMethod->methodDefinition;
     }
 
+    inline bool IsChildTypeOfMulticastDelegate(const Il2CppClass* klass)
+    {
+        return klass->parent == il2cpp_defaults.multicastdelegate_class;
+    }
+
+    inline int32_t GetActualParamCount(const MethodInfo* methodInfo)
+    {
+        return IsInstanceMethod(methodInfo) ? (methodInfo->parameters_count + 1) : methodInfo->parameters_count;
+    }
+
+    inline int32_t GetFieldOffset(const FieldInfo* fieldInfo)
+    {
+        Il2CppClass* klass = fieldInfo->parent;
+        return IS_CLASS_VALUE_TYPE(klass) ? (fieldInfo->offset - sizeof(Il2CppObject)) : fieldInfo->offset;
+    }
+
+    inline int32_t GetThreadStaticFieldOffset(const FieldInfo* fieldInfo)
+    {
+        return il2cpp::vm::MetadataCache::GetThreadLocalStaticOffsetForField(const_cast<FieldInfo*>(fieldInfo));
+    }
 
     const Il2CppType* TryInflateIfNeed(const Il2CppType* selfType, const Il2CppGenericContext* genericContext, bool inflateMethodVars);
     const Il2CppType* TryInflateIfNeed(const Il2CppType* containerType, const Il2CppType* selfType);
@@ -258,18 +300,26 @@ namespace metadata
     bool IsOverrideMethod(const Il2CppType* type1, const Il2CppMethodDefinition* method1, const Il2CppType* type2, const Il2CppMethodDefinition* method2);
     bool IsOverrideMethodIgnoreName(const Il2CppType* type1, const Il2CppMethodDefinition* methodDef1, const Il2CppType* type2, const Il2CppMethodDefinition* methodDef2);
 
-    const Il2CppMethodDefinition* ResolveMethodDefinition(const Il2CppType* type, const char* resolveMethodName, const MethodRefSig& resolveSig, const Il2CppGenericInst* genericInstantiation);
+    const Il2CppMethodDefinition* ResolveMethodDefinition(const Il2CppType* type, const char* resolveMethodName, const MethodRefSig& resolveSig);
 
     const MethodInfo* GetMethodInfoFromMethodDef(const Il2CppType* type, const Il2CppMethodDefinition* methodDef);
 
     bool ResolveField(const Il2CppType* type, const char* resolveFieldName, Il2CppType* resolveFieldType, const Il2CppFieldDefinition*& retFieldDef);
 
+    inline void ResolveFieldThrow(const Il2CppType* type, const char* resolveFieldName, Il2CppType* resolveFieldType, const Il2CppFieldDefinition*& retFieldDef)
+    {
+        if (!ResolveField(type, resolveFieldName, resolveFieldType, retFieldDef))
+        {
+            RaiseMissingFieldException(type, resolveFieldName);
+        }
+    }
+
     const Il2CppGenericContainer* GetGenericContainerFromIl2CppType(const Il2CppType* type);
 
     bool IsMatchSigType(const Il2CppType* dstType, const Il2CppType* sigType, const Il2CppGenericContainer* klassGenericContainer, const Il2CppGenericContainer* methodGenericContainer);
 
-    bool IsMatchMethodSig(const Il2CppMethodDefinition* methodDef, const MethodRefSig& resolveSig, const Il2CppGenericContainer* klassGenericContainer, uint32_t genericArgCount);
-    bool IsMatchMethodSig(const MethodInfo* methodDef, const MethodRefSig& resolveSig, const Il2CppGenericContainer* klassGenericContainer, uint32_t genericArgCount);
+    bool IsMatchMethodSig(const Il2CppMethodDefinition* methodDef, const MethodRefSig& resolveSig, const Il2CppGenericContainer* klassGenericContainer);
+    bool IsMatchMethodSig(const MethodInfo* methodDef, const MethodRefSig& resolveSig, const Il2CppGenericContainer* klassGenericContainer);
     bool IsMatchMethodSig(const MethodInfo* methodDef, const MethodRefSig& resolveSig, const Il2CppType** klassInstArgv, const Il2CppType** methodInstArgv);
 
     inline Il2CppType* CloneIl2CppType(const Il2CppType* type)
@@ -285,6 +335,8 @@ namespace metadata
 
 
 #pragma region misc
+
+    const int32_t kMaxRetValueTypeStackObjectSize = 256;
 
     int32_t GetTypeValueSize(const Il2CppType* type);
 
@@ -347,6 +399,20 @@ namespace metadata
                 && t1.valuetype == t2.valuetype
 #endif
                 ;
+        }
+    };
+
+
+    struct Il2CppTypeHash {
+        size_t operator()(const Il2CppType* x) const noexcept {
+            return il2cpp::metadata::Il2CppTypeHash::Hash(x);
+        }
+    };
+
+    struct Il2CppTypeEqualTo
+    {
+        bool operator()(const Il2CppType* a, const Il2CppType* b) const {
+            return il2cpp::metadata::Il2CppTypeEqualityComparer::AreEqual(a, b);
         }
     };
 

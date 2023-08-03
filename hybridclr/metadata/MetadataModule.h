@@ -42,9 +42,14 @@ namespace metadata
 			return GetImage(DecodeImageIndex(typeDef->byvalTypeIndex));
 		}
 
-		static InterpreterImage* GetImage(const Il2CppMethodDefinition* typeDef)
+		static InterpreterImage* GetImage(const Il2CppMethodDefinition* method)
 		{
-			return GetImage(DecodeImageIndex(typeDef->nameIndex));
+			return GetImage(DecodeImageIndex(method->nameIndex));
+		}
+
+		static InterpreterImage* GetImage(const MethodInfo* method)
+		{
+			return GetImage(method->klass->image);
 		}
 
 		static InterpreterImage* GetImageByEncodedIndex(uint32_t encodedIndex)
@@ -119,7 +124,7 @@ namespace metadata
 
 		static uint32_t GetFieldOffset(const Il2CppClass* klass, int32_t fieldIndexInType, FieldInfo* field)
 		{
-			return GetImage(klass)->GetFieldOffset(klass, fieldIndexInType, field);
+			return GetImage(klass)->GetFieldOffset(klass, fieldIndexInType);
 		}
 
 		static const MethodInfo* GetMethodInfoFromMethodDefinitionIndex(uint32_t index)
@@ -220,6 +225,7 @@ namespace metadata
 			return GetImage(DecodeImageIndex(index))->GetFieldOrParameterDefalutValueByRawIndex(DecodeMetadataIndex(index));
 		}
 
+#if HYBRIDCLR_UNITY_2020
 		static bool HasAttribute(const Il2CppImage* image, uint32_t token, Il2CppClass* attribute)
 		{
 			return GetImage(image)->HasAttributeByToken(token, attribute);
@@ -229,12 +235,20 @@ namespace metadata
 		{
 			return GetImage(image)->GetCustomAttributeDataRange(token);
 		}
+#endif
 
 		static bool IsImplementedByInterpreter(MethodInfo* method)
 		{
 			Il2CppClass* klass = method->klass;
 			Il2CppClass* parent = klass->parent;
-			return parent != il2cpp_defaults.multicastdelegate_class && parent != il2cpp_defaults.delegate_class && AOTHomologousImage::FindImageByAssembly(klass->image->assembly);
+			if (parent != il2cpp_defaults.multicastdelegate_class && parent != il2cpp_defaults.delegate_class)
+			{
+				return AOTHomologousImage::FindImageByAssembly(klass->image->assembly);
+			}
+			else
+			{
+				return strcmp(method->name, "Invoke") == 0;
+			}
 		}
 
 		static Il2CppMethodPointer GetReversePInvokeWrapper(const Il2CppImage* image, const MethodInfo* method);
@@ -255,13 +269,15 @@ namespace metadata
 			auto it = s_methodPointer2ReverseInfos.find(methodPointer);
 			return it != s_methodPointer2ReverseInfos.end() ? it->second->index : -1;
 		}
+
+		static LoadImageErrorCode LoadMetadataForAOTAssembly(const void* dllBytes, uint32_t dllSize, HomologousImageMode mode);
 	private:
 		static void InitReversePInvokeInfo();
 
+		static std::unordered_map<const char*, int32_t, CStringHash, CStringEqualTo> s_methodSig2Indexs;
 		static std::unordered_map<const MethodInfo*, const ReversePInvokeInfo*> s_methodInfo2ReverseInfos;
 		static std::unordered_map<Il2CppMethodPointer, const ReversePInvokeInfo*> s_methodPointer2ReverseInfos;
 		static std::vector<ReversePInvokeInfo> s_reverseInfos;
-		static size_t s_nextMethodIndex;
 	};
 }
 

@@ -1,12 +1,7 @@
 #pragma once
-#include "../hybridclr-compatible-config.h"
 
 #include "il2cpp-config.h"
 #include "il2cpp-class-internals.h"
-
-#if HYBRIDCLR_UNITY_2010_OR_NEW
-#include "Baselib.h"
-#endif
 
 #include "vm/Array.h"
 #include "vm/Type.h"
@@ -16,7 +11,7 @@
 
 #if HYBRIDCLR_UNITY_2020
 #include "icalls/mscorlib/System/MonoType.h"
-#elif HYBRIDCLR_UNITY_2021
+#elif HYBRIDCLR_UNITY_2021 || HYBRIDCLR_UNITY_2022
 #include "icalls/mscorlib/System/RuntimeType.h"
 #include "icalls/mscorlib/System/RuntimeTypeHandle.h"
 #elif HYBRIDCLR_UNITY_2019
@@ -26,8 +21,10 @@
 #else
 #define PLATFORM_ARCH_64 0
 #endif
+#elif !defined(HYBRIDCLR_UNITY_VERSION)
+#error "please run 'HybridCLR/Generate/All' before building"
 #else
-#error "not suppport unity version"
+#error "unsupported unity version"
 #endif
 
 #if IL2CPP_BYTE_ORDER != IL2CPP_LITTLE_ENDIAN
@@ -38,7 +35,7 @@
 #define HYBRIDCLR_TARGET_ARM64 1
 #elif IL2CPP_TARGET_ARMV7
 #define HYBRIDCLR_TARGET_ARMV7 1
-#elif IL2CPP_TARGET_WINDOWS || IL2CPP_TARGET_DARWIN || IL2CPP_TARGET_LINUX
+#elif IL2CPP_TARGET_WINDOWS || IL2CPP_TARGET_DARWIN || IL2CPP_TARGET_LINUX || IL2CPP_TARGET_ANDROID
 #if PLATFORM_ARCH_64
 #define HYBRIDCLR_TARGET_X64 1
 #else
@@ -54,18 +51,19 @@
 #define HYBRIDCLR_ARCH_64 1
 #if IL2CPP_TARGET_ARM64
 #define HYBRIDCLR_ABI_ARM_64 1
-#define HYBRIDCLR_ABI_UNIVERSAL_64 0
 #define HYBRIDCLR_ABI_NAME "Arm64"
 #else
 #define HYBRIDCLR_ABI_UNIVERSAL_64 1
 #define HYBRIDCLR_ABI_NAME "General64"
 #endif
-#define HYBRIDCLR_ABI_UNIVERSAL_32 0
 #else
-#define HYBRIDCLR_ARCH_64 0
-#define HYBRIDCLR_ABI_UNIVERSAL_64 0
+#if IL2CPP_TARGET_JAVASCRIPT
+#define HYBRIDCLR_ABI_WEBGL32 1
+#define HYBRIDCLR_ABI_NAME "WebGL32"
+#else
 #define HYBRIDCLR_ABI_UNIVERSAL_32 1
 #define HYBRIDCLR_ABI_NAME "General32"
+#endif
 #endif
 
 #define PTR_SIZE IL2CPP_SIZEOF_VOID_P
@@ -75,6 +73,47 @@
 #ifndef ENABLE_PLACEHOLDER_DLL
 #define ENABLE_PLACEHOLDER_DLL 1
 #endif
+
+#if IL2CPP_ENABLE_WRITE_BARRIERS
+#error "not support incremental gc"
+#endif
+
+namespace hybridclr
+{
+
+	extern const char* g_placeHolderAssemblies[];
+
+	Il2CppMethodPointer InitAndGetInterpreterDirectlyCallMethodPointerSlow(MethodInfo* method);
+
+	inline Il2CppMethodPointer InitAndGetInterpreterDirectlyCallMethodPointer(const MethodInfo* method)
+	{
+		Il2CppMethodPointer methodPointer = method->methodPointerCallByInterp;
+		if (methodPointer)
+		{
+			return methodPointer;
+		}
+		if (method->initInterpCallMethodPointer)
+		{
+			return methodPointer;
+		}
+		return InitAndGetInterpreterDirectlyCallMethodPointerSlow(const_cast<MethodInfo*>(method));
+	}
+
+	inline Il2CppMethodPointer InitAndGetInterpreterDirectlyCallVirtualMethodPointer(const MethodInfo* method)
+	{
+		Il2CppMethodPointer methodPointer = method->virtualMethodPointerCallByInterp;
+		if (methodPointer)
+		{
+			return methodPointer;
+		}
+		if (method->initInterpCallMethodPointer)
+		{
+			return methodPointer;
+		}
+		InitAndGetInterpreterDirectlyCallMethodPointerSlow(const_cast<MethodInfo*>(method));
+		return method->virtualMethodPointerCallByInterp;
+	}
+}
 
 #if HYBRIDCLR_UNITY_2019 || HYBRIDCLR_UNITY_2020
 
@@ -113,18 +152,6 @@ inline void COPY_IL2CPPTYPE_VALUE_TYPE_FLAG(Il2CppType& dst, const Il2CppType& s
 
 namespace hybridclr
 {
-	Il2CppMethodPointer InitAndGetInterpreterDirectlyCallMethodPointerSlow(MethodInfo* method);
-
-	inline Il2CppMethodPointer GetInterpreterDirectlyCallMethodPointer(const MethodInfo* method)
-	{
-		Il2CppMethodPointer methodPointer = method->methodPointer;
-		if (methodPointer || method->initInterpCallMethodPointer)
-		{
-			return methodPointer;
-		}
-		return InitAndGetInterpreterDirectlyCallMethodPointerSlow(const_cast<MethodInfo*>(method));
-	}
-
 	inline Il2CppReflectionType* GetReflectionTypeFromName(Il2CppString* name)
 	{
 		return il2cpp::icalls::mscorlib::System::Type::internal_from_name(name, true, false);
@@ -132,7 +159,10 @@ namespace hybridclr
 
 	inline void ConstructDelegate(Il2CppDelegate* delegate, Il2CppObject* target, const MethodInfo* method)
 	{
-		il2cpp::vm::Type::ConstructDelegate(delegate, target, GetInterpreterDirectlyCallMethodPointer(method), method);
+		delegate->method_ptr = InitAndGetInterpreterDirectlyCallVirtualMethodPointer(method);
+		delegate->method = method;
+		delegate->target = target;
+		//il2cpp::vm::Type::ConstructDelegate(delegate, target, InitAndGetInterpreterDirectlyCallMethodPointer(method), method);
 	}
 
 	inline const MethodInfo* GetGenericVirtualMethod(const MethodInfo* result, const MethodInfo* inflateMethod)
@@ -140,14 +170,16 @@ namespace hybridclr
 		return il2cpp::vm::Runtime::GetGenericVirtualMethod(result, inflateMethod);
 	}
 
-	inline void* GetNulllableDataOffset(void* nullableObj, uint32_t size)
+	inline void* GetNulllableDataOffset(void* nullableObj, Il2CppClass* nullableClass)
 	{
-		return nullableObj;
+		uint32_t field_offset = nullableClass->fields[0].offset - sizeof(Il2CppObject); // offset of value field
+		return (uint8_t*)nullableObj + field_offset;
 	}
 
-	inline uint8_t* GetNulllableHasValueOffset(void* nullableObj, uint32_t size)
+	inline uint8_t* GetNulllableHasValueOffset(void* nullableObj, Il2CppClass* nullableClass)
 	{
-		return (uint8_t*)nullableObj + size;
+		uint32_t field_offset = nullableClass->fields[1].offset - sizeof(Il2CppObject); // offset of has_value field
+		return (uint8_t*)nullableObj + field_offset;
 	}
 
 	inline Il2CppString* GetKlassFullName(const Il2CppType* type)
@@ -156,7 +188,7 @@ namespace hybridclr
 		return il2cpp::icalls::mscorlib::System::MonoType::getFullName(refType, false, false);
 	}
 }
-#elif HYBRIDCLR_UNITY_2021
+#elif HYBRIDCLR_UNITY_2021 || HYBRIDCLR_UNITY_2022
 
 inline bool IS_CLASS_VALUE_TYPE(const Il2CppClass* klass)
 {
@@ -193,17 +225,6 @@ inline void COPY_IL2CPPTYPE_VALUE_TYPE_FLAG(Il2CppType& dst, const Il2CppType& s
 
 namespace hybridclr
 {
-	Il2CppMethodPointer InitAndGetInterpreterDirectlyCallMethodPointerSlow(MethodInfo* method);
-
-	inline Il2CppMethodPointer GetInterpreterDirectlyCallMethodPointer(const MethodInfo* method)
-	{
-		Il2CppMethodPointer methodPointer = method->indirect_call_via_invokers ? method->interpCallMethodPointer : method->methodPointer;
-		if (methodPointer || method->initInterpCallMethodPointer)
-		{
-			return methodPointer;
-		}
-		return InitAndGetInterpreterDirectlyCallMethodPointerSlow(const_cast<MethodInfo*>(method));
-	}
 
 	inline Il2CppReflectionType* GetReflectionTypeFromName(Il2CppString* name)
 	{
@@ -212,24 +233,33 @@ namespace hybridclr
 
 	inline void ConstructDelegate(Il2CppDelegate* delegate, Il2CppObject* target, const MethodInfo* method)
 	{
-		il2cpp::vm::Type::InvokeDelegateConstructor(delegate, target, method);
+		delegate->target = target;
+		delegate->method = method;
+		delegate->invoke_impl = InitAndGetInterpreterDirectlyCallVirtualMethodPointer(method);
+		delegate->invoke_impl_this = target;
 	}
 
 	inline const MethodInfo* GetGenericVirtualMethod(const MethodInfo* result, const MethodInfo* inflateMethod)
 	{
+#if HYBRIDCLR_UNITY_2021
 		VirtualInvokeData vid;
 		il2cpp::vm::Runtime::GetGenericVirtualMethod(result, inflateMethod, &vid);
 		return vid.method;
+#else
+		return il2cpp::metadata::GenericMethod::GetGenericVirtualMethod(result, inflateMethod);
+#endif
 	}
 
-	inline void* GetNulllableDataOffset(void* nullableObj, uint32_t size)
+	inline void* GetNulllableDataOffset(void* nullableObj, Il2CppClass* nullableClass)
 	{
-		return (uint8_t*)nullableObj + size;
+		uint32_t field_offset = nullableClass->fields[1].offset - sizeof(Il2CppObject); // offset of value field
+		return (uint8_t*)nullableObj + field_offset;
 	}
 
-	inline uint8_t* GetNulllableHasValueOffset(void* nullableObj, uint32_t size)
+	inline uint8_t* GetNulllableHasValueOffset(void* nullableObj, Il2CppClass* nullableClass)
 	{
-		return (uint8_t*)nullableObj;
+		uint32_t field_offset = nullableClass->fields[0].offset - sizeof(Il2CppObject); // offset of has_value field
+		return (uint8_t*)nullableObj + field_offset;
 	}
 
 	inline Il2CppString* GetKlassFullName(const Il2CppType* type)
@@ -239,7 +269,4 @@ namespace hybridclr
 	}
 
 }
-
-#else
-#error "not support unity version"
 #endif
